@@ -46,8 +46,44 @@ export class SceneManager {
     this.diagramGroup = new THREE.Group();
     this.scene.add(this.diagramGroup);
 
+    this.setupControlsHelp(container);
+
     window.addEventListener('resize', this.onResize);
     this.animate();
+  }
+
+  private setupControlsHelp(container: HTMLElement): void {
+    const help = document.createElement('div');
+    help.className = 'controls-help';
+    help.innerHTML = `
+      <div class="controls-help__item">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="6" y="2" width="12" height="20" rx="6" />
+          <line x1="12" y1="2" x2="12" y2="22" />
+          <rect x="9" y="5" width="3" height="5" rx="1" fill="currentColor" opacity="0.6" />
+        </svg>
+        <span>Rotate</span>
+      </div>
+      <div class="controls-help__item">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="6" y="2" width="12" height="20" rx="6" />
+          <line x1="12" y1="2" x2="12" y2="22" />
+          <rect x="12" y="5" width="3" height="5" rx="1" fill="currentColor" opacity="0.6" />
+        </svg>
+        <span>Pan</span>
+      </div>
+      <div class="controls-help__item">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="6" y="2" width="12" height="20" rx="6" />
+          <line x1="12" y1="2" x2="12" y2="22" />
+          <line x1="12" y1="6" x2="12" y2="10" stroke-width="2" opacity="0.8" />
+          <polyline points="9,8 12,5 15,8" stroke-width="1.5" />
+          <polyline points="9,9 12,12 15,9" stroke-width="1.5" />
+        </svg>
+        <span>Zoom</span>
+      </div>
+    `;
+    container.appendChild(help);
   }
 
   private setupLights(): void {
