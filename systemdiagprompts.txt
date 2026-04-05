@@ -1,0 +1,1633 @@
+ ▐▛███▜▌   Claude Code v2.1.92
+▝▜█████▛▘  Opus 4.6 (1M context) · Claude Max
+  ▘▘ ▝▝    ~/projects/sequence3d
+
+  ↑ Opus now defaults to 1M context · 5x more room, same pricing
+
+❯ I would like to add another mode (as a toggle switch) where instead of        
+sequence diagram from plantUML it is rendered as a 3d system diagram. Use a     
+appropriate layout algorithm to place participants with a lot of connections or 
+ few connections in an appropriate location to keep the diagram clean. All the  
+participants should be visible from the beginning but the connections should    
+start appearing in the right sequence. Connections lines should never be        
+diagonal and ideally should intersect. Move the camera appropriately to convey  
+the most information to the user.                                               
+
+● Explore(Explore codebase structure)
+  ⎿  Done (18 tool uses · 36.7k tokens · 2m 2s)
+  (ctrl+o to expand)
+
+● Now let me read the key files I'll need to modify.
+
+  Read 4 files (ctrl+o to expand)
+
+● Let me also read the remaining key files.
+
+  Read 6 files (ctrl+o to expand)
+
+● Now I have a full understanding of the codebase. Let me implement the system
+  diagram mode. I'll create the new files and modify existing ones.
+
+● Update(src/types.ts)
+  ⎿  Added 44 lines
+       70    PARTICIPANT_Y: 8.0,
+       71    ARROW_Z_OFFSET: 0.05,
+       72  } as const;
+       73 +                                                              
+       74 +// ── System Diagram Types ──                                 
+       75 +                                                              
+       76 +export type DiagramMode = 'sequence' | 'system';              
+       77 +                                                              
+       78 +export interface SystemNodeLayout {                           
+       79 +  participant: Participant;                                   
+       80 +  position: THREE.Vector3; // center of node on XZ plane (y = 
+          +0)                                                            
+       81 +  index: number;                                              
+       82 +}                                                             
+       83 +                                                              
+       84 +export interface SystemConnectionLayout {                     
+       85 +  message: Message;                                           
+       86 +  /** Ordered waypoints forming an orthogonal path (axis-align
+          +ed segments only) */                                          
+       87 +  waypoints: THREE.Vector3[];                                 
+       88 +  fromNode: SystemNodeLayout;                                 
+       89 +  toNode: SystemNodeLayout;                                   
+       90 +  isSelfConnection: boolean;                                  
+       91 +}                                                             
+       92 +                                                              
+       93 +export interface SystemLayout {                               
+       94 +  nodes: SystemNodeLayout[];                                  
+       95 +  connections: SystemConnectionLayout[];                      
+       96 +  bounds: {                                                   
+       97 +    min: THREE.Vector3;                                       
+       98 +    max: THREE.Vector3;                                       
+       99 +    center: THREE.Vector3;                                    
+      100 +  };                                                          
+      101 +}                                                             
+      102 +                                                              
+      103 +export interface ConnectionObject {                           
+      104 +  group: THREE.Group;                                         
+      105 +  animateGrow: (progress: number) => void;                    
+      106 +  layout: SystemConnectionLayout;                             
+      107 +}                                                             
+      108 +                                                              
+      109 +export const SYSTEM_LAYOUT = {                                
+      110 +  NODE_SIZE: 2.0,                                             
+      111 +  NODE_HEIGHT: 1.2,                                           
+      112 +  NODE_DEPTH: 2.0,                                            
+      113 +  GRID_SPACING: 7.0,                                          
+      114 +  CONNECTION_Y: 0.8,        // base Y for connection lines (ab
+          +ove node tops)                                                
+      115 +  CONNECTION_Y_STEP: 0.5,   // Y increment per connection laye
+          +r to avoid overlap                                            
+      116 +} as const;                                                   
+● Write(src/layout/system-layout-engine.ts)
+  ⎿  Wrote 179 lines to src/layout/system-layout-engine.ts
+       1 import * as THREE from 'three';
+       2 import {
+       3   ParsedDiagram,
+       4   SystemNodeLayout,
+       5   SystemConnectionLayout,
+       6   SystemLayout,
+       7   SYSTEM_LAYOUT,
+       8 } from '../types';
+       9 
+      10 /**
+     … +169 lines (ctrl+o to expand)
+
+  Read 1 file (ctrl+o to expand)
+
+● Write(src/scene/node-mesh.ts)
+  ⎿  Wrote 48 lines to src/scene/node-mesh.ts
+      1 import * as THREE from 'three';
+      2 import { SystemNodeLayout, SYSTEM_LAYOUT } from '../types';
+      3 import { createLabel } from './label-factory';
+      4 
+      5 const COLORS = [0x4a9eff, 0xff6b6b, 0x51cf66, 0xffd43b, 0xcc5de8,
+         0x20c997];
+      6 
+      7 export function createNodeMesh(node: SystemNodeLayout): THREE.Gro
+        up {
+      8   const group = new THREE.Group();
+      9   const color = COLORS[node.index % COLORS.length];
+     … +38 lines (ctrl+o to expand)
+
+● Write(src/scene/connection-mesh.ts)
+  ⎿  Wrote 131 lines to src/scene/connection-mesh.ts
+      1 import * as THREE from 'three';
+      2 import { SystemConnectionLayout, ConnectionObject } from '../type
+        s';
+      3 import { createLabel } from './label-factory';
+      4 
+      5 export function createConnection(
+      6   layout: SystemConnectionLayout
+      7 ): ConnectionObject {
+      8   const group = new THREE.Group();
+      9   group.visible = false;
+     … +121 lines (ctrl+o to expand)
+
+● Write(src/animation/system-timeline-sequencer.ts)
+  ⎿  Wrote 44 lines to src/animation/system-timeline-sequencer.ts
+       1 import gsap from 'gsap';
+       2 import { ConnectionObject, SystemLayout } from '../types';
+       3 import { CameraController } from './camera-controller';
+       4 
+       5 export function buildSystemTimeline(
+       6   layout: SystemLayout,
+       7   connectionObjects: ConnectionObject[],
+       8   cameraController: CameraController
+       9 ): gsap.core.Timeline {
+      10   const tl = gsap.timeline({ paused: true });
+     … +34 lines (ctrl+o to expand)
+
+● Now I need to add the system diagram camera methods to CameraController.
+
+● Update(src/animation/camera-controller.ts)
+  ⎿  Added 7 lines, removed 1 line
+       1  import * as THREE from 'three';
+       2  import { OrbitControls } from 'three/addons/controls/OrbitContr
+          ols.js';
+       3  import gsap from 'gsap';
+       4 -import { ArrowLayout, CameraPose, SceneLayout } from '../types'
+         -;                                                              
+       4 +import {                                                       
+       5 +  ArrowLayout,                                                 
+       6 +  CameraPose,                                                  
+       7 +  SceneLayout,                                                 
+       8 +  SystemLayout,                                                
+       9 +  SystemConnectionLayout,                                      
+      10 +} from '../types';                                             
+      11  
+      12  export class CameraController {
+      13    private camera: THREE.PerspectiveCamera;
+
+● Update(src/animation/camera-controller.ts)
+  ⎿  Added 49 lines
+       94      return tl as unknown as gsap.core.Tween;
+       95    }
+       96  
+       97 +  // ── System Diagram Camera ──                              
+       98 +                                                              
+       99 +  computeSystemOverviewPose(layout: SystemLayout): CameraPose 
+          +{                                                             
+      100 +    const { bounds } = layout;                                
+      101 +    const spanX = bounds.max.x - bounds.min.x;                
+      102 +    const spanZ = bounds.max.z - bounds.min.z;                
+      103 +    const span = Math.max(spanX, spanZ);                      
+      104 +                                                              
+      105 +    const fov = this.camera.fov * (Math.PI / 180);            
+      106 +    const dist = (span / 2) / Math.tan(fov / 2) * 1.3;        
+      107 +                                                              
+      108 +    // Elevated angle: camera above and slightly in front     
+      109 +    const cx = bounds.center.x;                               
+      110 +    const cz = bounds.center.z;                               
+      111 +    return {                                                  
+      112 +      position: new THREE.Vector3(cx, dist * 0.7, cz + dist * 
+          +0.7),                                                         
+      113 +      target: new THREE.Vector3(cx, 0, cz),                   
+      114 +    };                                                        
+      115 +  }                                                           
+      116 +                                                              
+      117 +  computeConnectionPose(                                      
+      118 +    conn: SystemConnectionLayout,                             
+      119 +    layout: SystemLayout                                      
+      120 +  ): CameraPose {                                             
+      121 +    const fromPos = conn.fromNode.position;                   
+      122 +    const toPos = conn.toNode.position;                       
+      123 +                                                              
+      124 +    const midX = (fromPos.x + toPos.x) / 2;                   
+      125 +    const midZ = (fromPos.z + toPos.z) / 2;                   
+      126 +                                                              
+      127 +    // Frame the two nodes with padding                       
+      128 +    const dx = Math.abs(fromPos.x - toPos.x) + 6;             
+      129 +    const dz = Math.abs(fromPos.z - toPos.z) + 6;             
+      130 +    const span = Math.max(dx, dz);                            
+      131 +                                                              
+      132 +    const fov = this.camera.fov * (Math.PI / 180);            
+      133 +    const dist = Math.max((span / 2) / Math.tan(fov / 2) * 1.1
+          +, 8);                                                         
+      134 +                                                              
+      135 +    // Blend between connection-specific view and overview to 
+          +keep orientation                                              
+      136 +    const overview = this.computeSystemOverviewPose(layout);  
+      137 +    const blendedX = midX * 0.7 + overview.target.x * 0.3;    
+      138 +    const blendedZ = midZ * 0.7 + overview.target.z * 0.3;    
+      139 +                                                              
+      140 +    return {                                                  
+      141 +      position: new THREE.Vector3(blendedX, dist * 0.6, blende
+          +dZ + dist * 0.65),                                            
+      142 +      target: new THREE.Vector3(midX, 0, midZ),               
+      143 +    };                                                        
+      144 +  }                                                           
+      145 +                                                              
+      146    setEnabled(enabled: boolean): void {
+      147      this.controls.enabled = enabled;
+      148    }
+
+● Now the toggle switch UI and CSS.
+
+● Update(src/ui/editor-panel.ts)
+  ⎿  Added 3 lines
+      11  Charlie --> Alice: Query response
+      12  @enduml`;
+      13  
+      14 +import { DiagramMode } from '../types';                        
+      15 +                                                               
+      16  export interface PlaybackCallbacks {
+      17    onPlay: (input: string) => void;
+      18    onPause: () => void;
+      19    onResume: () => void;
+      20    onReset: () => void;
+      21    onSpeedChange: (speed: number) => void;
+      22 +  onModeChange: (mode: DiagramMode) => void;                   
+      23  }
+      24  
+      25  export class EditorPanel {
+
+● Update(src/ui/editor-panel.ts)
+  ⎿  Added 36 lines
+      41      title.textContent = 'Sequence3D';
+      42      this.container.appendChild(title);
+      43  
+      44 +    // Mode toggle                                             
+      45 +    const modeRow = document.createElement('div');             
+      46 +    modeRow.className = 'mode-toggle';                         
+      47 +                                                               
+      48 +    const seqLabel = document.createElement('span');           
+      49 +    seqLabel.className = 'mode-label mode-label--active';      
+      50 +    seqLabel.textContent = 'Sequence';                         
+      51 +    seqLabel.dataset.mode = 'sequence';                        
+      52 +                                                               
+      53 +    const toggleTrack = document.createElement('label');       
+      54 +    toggleTrack.className = 'toggle-track';                    
+      55 +    const toggleInput = document.createElement('input');       
+      56 +    toggleInput.type = 'checkbox';                             
+      57 +    toggleInput.className = 'toggle-input';                    
+      58 +    const toggleSlider = document.createElement('span');       
+      59 +    toggleSlider.className = 'toggle-slider';                  
+      60 +    toggleTrack.appendChild(toggleInput);                      
+      61 +    toggleTrack.appendChild(toggleSlider);                     
+      62 +                                                               
+      63 +    const sysLabel = document.createElement('span');           
+      64 +    sysLabel.className = 'mode-label';                         
+      65 +    sysLabel.textContent = 'System';                           
+      66 +    sysLabel.dataset.mode = 'system';                          
+      67 +                                                               
+      68 +    toggleInput.addEventListener('change', () => {             
+      69 +      const mode: DiagramMode = toggleInput.checked ? 'system' 
+         +: 'sequence';                                                  
+      70 +      seqLabel.classList.toggle('mode-label--active', !toggleIn
+         +put.checked);                                                  
+      71 +      sysLabel.classList.toggle('mode-label--active', toggleInp
+         +ut.checked);                                                   
+      72 +      this.callbacks.onModeChange(mode);                       
+      73 +    });                                                        
+      74 +                                                               
+      75 +    modeRow.appendChild(seqLabel);                             
+      76 +    modeRow.appendChild(toggleTrack);                          
+      77 +    modeRow.appendChild(sysLabel);                             
+      78 +    this.container.appendChild(modeRow);                       
+      79 +                                                               
+      80      this.textarea = document.createElement('textarea');
+      81      this.textarea.value = SAMPLE_DIAGRAM;
+      82      this.textarea.spellcheck = false;
+
+● Now add the CSS for the toggle switch.
+
+● Update(src/styles/main.css)
+  ⎿  Added 68 lines
+       39    letter-spacing: 0.5px;
+       40  }
+       41  
+       42 +/* Mode Toggle */                                             
+       43 +.mode-toggle {                                                
+       44 +  display: flex;                                              
+       45 +  align-items: center;                                        
+       46 +  justify-content: center;                                    
+       47 +  gap: 10px;                                                  
+       48 +  margin-bottom: 12px;                                        
+       49 +}                                                             
+       50 +                                                              
+       51 +.mode-label {                                                 
+       52 +  font-size: 12px;                                            
+       53 +  font-weight: 600;                                           
+       54 +  color: #556;                                                
+       55 +  transition: color 0.25s;                                    
+       56 +  cursor: default;                                            
+       57 +  user-select: none;                                          
+       58 +}                                                             
+       59 +                                                              
+       60 +.mode-label--active {                                         
+       61 +  color: #88bbff;                                             
+       62 +  text-shadow: 0 0 6px rgba(100, 160, 255, 0.4);              
+       63 +}                                                             
+       64 +                                                              
+       65 +.toggle-track {                                               
+       66 +  position: relative;                                         
+       67 +  display: inline-block;                                      
+       68 +  width: 40px;                                                
+       69 +  height: 20px;                                               
+       70 +  cursor: pointer;                                            
+       71 +}                                                             
+       72 +                                                              
+       73 +.toggle-input {                                               
+       74 +  opacity: 0;                                                 
+       75 +  width: 0;                                                   
+       76 +  height: 0;                                                  
+       77 +  position: absolute;                                         
+       78 +}                                                             
+       79 +                                                              
+       80 +.toggle-slider {                                              
+       81 +  position: absolute;                                         
+       82 +  inset: 0;                                                   
+       83 +  background: rgba(100, 130, 255, 0.2);                       
+       84 +  border: 1px solid rgba(100, 130, 255, 0.3);                 
+       85 +  border-radius: 10px;                                        
+       86 +  transition: background 0.25s;                               
+       87 +}                                                             
+       88 +                                                              
+       89 +.toggle-slider::before {                                      
+       90 +  content: '';                                                
+       91 +  position: absolute;                                         
+       92 +  left: 2px;                                                  
+       93 +  top: 2px;                                                   
+       94 +  width: 14px;                                                
+       95 +  height: 14px;                                               
+       96 +  background: #4a9eff;                                        
+       97 +  border-radius: 50%;                                         
+       98 +  transition: transform 0.25s;                                
+       99 +  box-shadow: 0 0 6px rgba(74, 158, 255, 0.5);                
+      100 +}                                                             
+      101 +                                                              
+      102 +.toggle-input:checked + .toggle-slider::before {              
+      103 +  transform: translateX(20px);                                
+      104 +}                                                             
+      105 +                                                              
+      106 +.toggle-input:checked + .toggle-slider {                      
+      107 +  background: rgba(100, 130, 255, 0.3);                       
+      108 +}                                                             
+      109 +                                                              
+      110  .editor-panel textarea {
+      111    width: 100%;
+      112    height: 220px;
+● Now wire everything up in main.ts.
+
+● Write(src/main.ts)
+  ⎿  Added 54 lines, removed 1 line
+       1  import gsap from 'gsap';
+       2  import { parse } from './parser/plantuml-parser';
+       3  import { computeLayout } from './layout/layout-engine';
+       4 +import { computeSystemLayout } from './layout/system-layout-eng
+         +ine';                                                          
+       5  import { SceneManager } from './scene/scene-manager';
+       6  import { createParticipantMesh } from './scene/participant-mesh
+          ';
+       7  import { createLifeline } from './scene/lifeline-mesh';
+       8  import { createArrow } from './scene/arrow-mesh';
+       9 +import { createNodeMesh } from './scene/node-mesh';            
+      10 +import { createConnection } from './scene/connection-mesh';    
+      11  import { CameraController } from './animation/camera-controller
+          ';
+      12  import { buildTimeline } from './animation/timeline-sequencer';
+      13 +import { buildSystemTimeline } from './animation/system-timelin
+         +e-sequencer';                                                  
+      14  import { EditorPanel } from './ui/editor-panel';
+      11 -import { ArrowObject } from './types';                         
+      15 +import { ArrowObject, ConnectionObject, DiagramMode } from './t
+         +ypes';                                                         
+      16  
+      17  const app = document.getElementById('app')!;
+      18  const sceneManager = new SceneManager(app);
+     ...
+      22  );
+      23  
+      24  let currentTimeline: gsap.core.Timeline | null = null;
+      25 +let currentMode: DiagramMode = 'sequence';                     
+      26  
+      27  function play(input: string): void {
+      28    if (currentTimeline) {
+     ...
+      36    const diagram = parse(input);
+      37    if (diagram.participants.length === 0) return;
+      38  
+      39 +  if (currentMode === 'system') {                              
+      40 +    playSystem(input, diagram, group);                         
+      41 +  } else {                                                     
+      42 +    playSequence(input, diagram, group);                       
+      43 +  }                                                            
+      44 +}                                                              
+      45 +                                                               
+      46 +function playSequence(                                         
+      47 +  _input: string,                                              
+      48 +  diagram: ReturnType<typeof parse>,                           
+      49 +  group: THREE.Group                                           
+      50 +): void {                                                      
+      51    const layout = computeLayout(diagram);
+      52  
+      53    layout.participants.forEach((pl, i) => {
+     ...
+       70    currentTimeline.play();
+       71  }
+       72  
+       73 +function playSystem(                                          
+       74 +  _input: string,                                             
+       75 +  diagram: ReturnType<typeof parse>,                          
+       76 +  group: THREE.Group                                          
+       77 +): void {                                                     
+       78 +  const layout = computeSystemLayout(diagram);                
+       79 +                                                              
+       80 +  // All nodes visible from the start                         
+       81 +  layout.nodes.forEach((node) => {                            
+       82 +    group.add(createNodeMesh(node));                          
+       83 +  });                                                         
+       84 +                                                              
+       85 +  const connectionObjects: ConnectionObject[] = layout.connect
+          +ions.map((cl) => {                                            
+       86 +    const conn = createConnection(cl);                        
+       87 +    group.add(conn.group);                                    
+       88 +    return conn;                                              
+       89 +  });                                                         
+       90 +                                                              
+       91 +  cameraController.setEnabled(false);                         
+       92 +                                                              
+       93 +  currentTimeline = buildSystemTimeline(                      
+       94 +    layout,                                                   
+       95 +    connectionObjects,                                        
+       96 +    cameraController                                          
+       97 +  );                                                          
+       98 +  currentTimeline.eventCallback('onComplete', () => {         
+       99 +    cameraController.setEnabled(true);                        
+      100 +  });                                                         
+      101 +  currentTimeline.play();                                     
+      102 +}                                                             
+      103 +                                                              
+      104  function pause(): void {
+      105    currentTimeline?.pause();
+      106  }
+     ...
+      133    });
+      134  }
+      135  
+      136 +function onModeChange(mode: DiagramMode): void {              
+      137 +  currentMode = mode;                                         
+      138 +}                                                             
+      139 +                                                              
+      140  new EditorPanel(app, {
+      141    onPlay: play,
+      142    onPause: pause,
+      143    onResume: resume,
+      144    onReset: reset,
+      145    onSpeedChange: setSpeed,
+      146 +  onModeChange,                                               
+      147  });
+
+● Bash(npx tsc --noEmit 2>&1)
+  ⎿  Error: Exit code 2
+     src/main.ts(49,10): error TS2503: Cannot find namespace 'THREE'.
+     src/main.ts(76,10): error TS2503: Cannot find namespace 'THREE'.
+
+● Need to import THREE in main.ts.
+
+● Update(src/main.ts)
+  ⎿  Added 1 line
+      1 +import * as THREE from 'three';                                 
+      2  import gsap from 'gsap';
+      3  import { parse } from './parser/plantuml-parser';
+      4  import { computeLayout } from './layout/layout-engine';
+
+● Bash(npx tsc --noEmit 2>&1)
+  ⎿  (No output)
+
+● TypeScript compiles clean. Let me verify the build too.
+
+● Bash(npm run build 2>&1)
+  ⎿  > sequence3d@1.0.0 build
+     > tsc && vite build
+     … +16 lines (ctrl+o to expand)
+  ⎿  (timeout 30s)
+
+● Everything builds successfully. Here's what was implemented:
+
+  New files
+
+  - src/layout/system-layout-engine.ts — Layout algorithm that:
+    - Counts connections per participant and sorts by connectivity (most
+  connected = center)
+    - Places nodes in a spiral pattern on the XZ plane so high-connectivity
+  nodes are central
+    - Routes connections orthogonally: up from source node → travel along X →
+  travel along Z → down to target node (never diagonal)
+    - Each connection uses a different Y-layer to minimize intersections
+    - Self-connections route as a rectangular loop beside the node
+  - src/scene/node-mesh.ts — 3D cube-style nodes (wider/deeper than sequence
+  boxes) with colored materials, edge outlines, and labels
+  - src/scene/connection-mesh.ts — Animated orthogonal connection lines that
+  grow progressively along their waypoints, with a cone arrowhead that orients
+  to the current segment direction, and labels that fade in at 80% progress
+  - src/animation/system-timeline-sequencer.ts — Builds a GSAP timeline that
+  shows all nodes immediately, then animates each connection sequentially with
+  camera movement to frame each pair of nodes
+
+  Modified files
+
+  - src/types.ts — Added DiagramMode, SystemNodeLayout, SystemConnectionLayout,
+  SystemLayout, ConnectionObject types and SYSTEM_LAYOUT constants
+  - src/animation/camera-controller.ts — Added computeSystemOverviewPose()
+  (elevated angled view looking down at XZ plane) and computeConnectionPose()
+  (frames two connected nodes with blended positioning)
+  - src/ui/editor-panel.ts — Added a Sequence/System toggle switch with animated
+   slider
+  - src/styles/main.css — Added toggle switch styles matching the existing
+  dark/blue theme
+  - src/main.ts — Routes to playSequence() or playSystem() based on toggle
+  state, same playback controls work for both modes
+
+✻ Cogitated for 5m 59s
+
+❯ Currently the connecting lines are higher then the participant blocks on the  
+y axis. I would like the lines to be within the y axis of all blocks. You can   
+make some boxes bigger or smaller depending on the number of connections in and 
+ out, if needed. Again avoid diagonal lines. A few lines crossing over each     
+other is fine if needed but try to minimize.                                    
+
+  Read 3 files (ctrl+o to expand)
+
+● The core issue is that connections route above the nodes. I need to route them
+   on the XZ plane (at y=0, through node centers), exiting from node edges, and
+  scale node sizes by connectivity.
+
+● Update(src/types.ts)
+  ⎿  Added 6 lines
+      79    participant: Participant;
+      80    position: THREE.Vector3; // center of node on XZ plane (y = 0
+          )
+      81    index: number;
+      82 +  /** 0–1 normalized connectivity; drives visual size */       
+      83 +  scale: number;                                               
+      84 +  /** Actual half-extents after scaling (for edge exit points) 
+         +*/                                                             
+      85 +  halfWidth: number;  // along X                               
+      86 +  halfDepth: number;  // along Z                               
+      87 +  halfHeight: number; // along Y                               
+      88  }
+      89  
+      90  export interface SystemConnectionLayout {
+
+● Update(src/types.ts)
+  ⎿  Added 6 lines, removed 5 lines
+      113  }
+      114  
+      115  export const SYSTEM_LAYOUT = {
+      116 -  NODE_SIZE: 2.0,                                             
+      117 -  NODE_HEIGHT: 1.2,                                           
+      118 -  NODE_DEPTH: 2.0,                                            
+      116 +  NODE_MIN_SIZE: 1.4,       // width/depth for lowest-connecti
+          +vity node                                                     
+      117 +  NODE_MAX_SIZE: 3.0,       // width/depth for highest-connect
+          +ivity node                                                    
+      118 +  NODE_MIN_HEIGHT: 0.8,                                       
+      119 +  NODE_MAX_HEIGHT: 2.0,                                       
+      120    GRID_SPACING: 7.0,
+      120 -  CONNECTION_Y: 0.8,        // base Y for connection lines (ab
+          -ove node tops)                                                
+      121 -  CONNECTION_Y_STEP: 0.5,   // Y increment per connection laye
+          -r to avoid overlap                                            
+      121 +  /** Small lateral offset between parallel connections sharin
+          +g a corridor */                                               
+      122 +  CONNECTION_OFFSET_STEP: 0.25,                               
+      123  } as const;
+
+● Now rewrite the layout engine to route connections through node edges on the
+  XZ plane.
+
+● Write(src/layout/system-layout-engine.ts)
+  ⎿  Added 114 lines, removed 53 lines
+       9  
+      10  /**
+      11   * Computes a system-diagram layout:
+      12 - * - Nodes placed on XZ plane, high-connectivity nodes toward c
+         -enter                                                          
+      13 - * - Orthogonal (axis-aligned) connection routing with per-conn
+         -ection Y layers                                                
+      12 + * - Nodes on XZ plane, sized by connectivity, high-connectivit
+         +y toward center                                                
+      13 + * - Orthogonal connection routing at y = 0 (within node Y rang
+         +e), exiting from node edges                                    
+      14   */
+      15  export function computeSystemLayout(diagram: ParsedDiagram): Sy
+          stemLayout {
+      16    const { participants, messages } = diagram;
+     ...
+      23      degree.set(m.to, (degree.get(m.to) ?? 0) + 1);
+      24    });
+      25  
+      26 -  // Sort by degree descending — most connected first          
+      26 +  const maxDegree = Math.max(1, ...degree.values());           
+      27 +                                                               
+      28 +  // Sort by degree descending — most connected = center of spi
+         +ral                                                            
+      29    const sorted = [...participants].sort(
+      30      (a, b) => (degree.get(b.alias) ?? 0) - (degree.get(a.alias)
+           ?? 0)
+      31    );
+     ...
+      34    const positions = computeSpiralPositions(sorted.length);
+      35    const nodeMap = new Map<string, SystemNodeLayout>();
+      36    const nodes: SystemNodeLayout[] = sorted.map((p, i) => {
+      37 +    const d = degree.get(p.alias) ?? 0;                        
+      38 +    const t = maxDegree > 1 ? d / maxDegree : 0.5; // normalize
+         +d 0–1                                                          
+      39 +                                                               
+      40 +    const lerp = (lo: number, hi: number) => lo + (hi - lo) * t
+         +;                                                              
+      41 +    const w = lerp(SYSTEM_LAYOUT.NODE_MIN_SIZE, SYSTEM_LAYOUT.N
+         +ODE_MAX_SIZE);                                                 
+      42 +    const h = lerp(SYSTEM_LAYOUT.NODE_MIN_HEIGHT, SYSTEM_LAYOUT
+         +.NODE_MAX_HEIGHT);                                             
+      43 +                                                               
+      44      const node: SystemNodeLayout = {
+      45        participant: p,
+      46        position: new THREE.Vector3(
+     ...
+      49          positions[i].z * SYSTEM_LAYOUT.GRID_SPACING
+      50        ),
+      51        index: i,
+      52 +      scale: t,                                                
+      53 +      halfWidth: w / 2,                                        
+      54 +      halfDepth: w / 2,                                        
+      55 +      halfHeight: h / 2,                                       
+      56      };
+      57      nodeMap.set(p.alias, node);
+      58      return node;
+      59    });
+      60  
+      48 -  // ── 3. Route orthogonal connections ──                     
+      61 +  // ── 3. Route orthogonal connections at y = 0 ──            
+      62 +  // Track how many connections share a corridor so we can offs
+         +et them                                                        
+      63 +  const corridorCounts = new Map<string, number>();            
+      64 +                                                               
+      65    const connections: SystemConnectionLayout[] = [];
+      50 -  // Track occupied routing segments to offset overlapping conn
+         -ections                                                        
+      51 -  const usedYLayers = new Map<string, number>(); // "gridCol" →
+         - count                                                         
+      66  
+      53 -  messages.forEach((msg, msgIdx) => {                          
+      67 +  messages.forEach((msg) => {                                  
+      68      const fromNode = nodeMap.get(msg.from);
+      69      const toNode = nodeMap.get(msg.to);
+      70      if (!fromNode || !toNode) return;
+      71  
+      72      const isSelf = msg.from === msg.to;
+      73      const waypoints = isSelf
+      60 -      ? computeSelfConnectionRoute(fromNode, msgIdx)           
+      61 -      : computeOrthogonalRoute(fromNode, toNode, msgIdx, usedYL
+         -ayers);                                                        
+      74 +      ? computeSelfRoute(fromNode, corridorCounts)             
+      75 +      : computeOrthogonalRoute(fromNode, toNode, corridorCounts
+         +);                                                             
+      76  
+      77      connections.push({
+      78        message: msg,
+     ...
+       91    const maxX = Math.max(...allX) + pad;
+       92    const minZ = Math.min(...allZ) - pad;
+       93    const maxZ = Math.max(...allZ) + pad;
+       80 -  const maxY =                                                
+       81 -    SYSTEM_LAYOUT.CONNECTION_Y +                              
+       82 -    connections.length * SYSTEM_LAYOUT.CONNECTION_Y_STEP;     
+       94 +  const maxH = Math.max(...nodes.map((n) => n.halfHeight));   
+       95  
+       96    const bounds = {
+       85 -    min: new THREE.Vector3(minX, 0, minZ),                    
+       86 -    max: new THREE.Vector3(maxX, maxY, maxZ),                 
+       87 -    center: new THREE.Vector3((minX + maxX) / 2, maxY / 2, (mi
+          -nZ + maxZ) / 2),                                              
+       97 +    min: new THREE.Vector3(minX, -maxH, minZ),                
+       98 +    max: new THREE.Vector3(maxX, maxH, maxZ),                 
+       99 +    center: new THREE.Vector3((minX + maxX) / 2, 0, (minZ + ma
+          +xZ) / 2),                                                     
+      100    };
+      101  
+      102    return { nodes, connections, bounds };
+      103  }
+      104  
+      105  // ── Spiral placement ──
+       94 -// Center = index 0, then rings outward. Returns unit-grid coo
+          -rdinates.                                                     
+      106  function computeSpiralPositions(
+      107    count: number
+      108  ): { x: number; z: number }[] {
+     ...
+      110    const result: { x: number; z: number }[] = [{ x: 0, z: 0 }];
+      111    if (count === 1) return result;
+      112  
+      102 -  // Directions: right, down, left, up (on XZ plane)          
+      113    const dx = [1, 0, -1, 0];
+      114    const dz = [0, 1, 0, -1];
+      115    let x = 0,
+     ...
+      135    return result;
+      136  }
+      137  
+      128 -// ── Orthogonal routing (L-shape or U-shape) ──              
+      138 +/**                                                           
+      139 + * Produce a corridor key for a pair of grid-aligned segments 
+          +so we can                                                     
+      140 + * count how many connections share the same corridor and offs
+          +et them.                                                      
+      141 + */                                                           
+      142 +function corridorKey(ax: number, az: number, bx: number, bz: n
+          +umber): string {                                              
+      143 +  const minX = Math.min(ax, bx);                              
+      144 +  const maxX = Math.max(ax, bx);                              
+      145 +  const minZ = Math.min(az, bz);                              
+      146 +  const maxZ = Math.max(az, bz);                              
+      147 +  return `${minX},${minZ}-${maxX},${maxZ}`;                   
+      148 +}                                                             
+      149 +                                                              
+      150 +function nextCorridorOffset(                                  
+      151 +  key: string,                                                
+      152 +  corridorCounts: Map<string, number>                         
+      153 +): number {                                                   
+      154 +  const count = corridorCounts.get(key) ?? 0;                 
+      155 +  corridorCounts.set(key, count + 1);                         
+      156 +  // Center the offsets: 0, +step, -step, +2step, -2step …    
+      157 +  const sign = count % 2 === 0 ? 1 : -1;                      
+      158 +  const mag = Math.ceil(count / 2);                           
+      159 +  return sign * mag * SYSTEM_LAYOUT.CONNECTION_OFFSET_STEP;   
+      160 +}                                                             
+      161 +                                                              
+      162 +// ── Orthogonal routing on the XZ plane (y = 0) ──           
+      163  function computeOrthogonalRoute(
+      164    from: SystemNodeLayout,
+      165    to: SystemNodeLayout,
+      132 -  connectionIndex: number,                                    
+      133 -  usedYLayers: Map<string, number>                            
+      166 +  corridorCounts: Map<string, number>                         
+      167  ): THREE.Vector3[] {
+      135 -  const nodeTop = SYSTEM_LAYOUT.NODE_HEIGHT / 2;              
+      136 -  const y =                                                   
+      137 -    SYSTEM_LAYOUT.CONNECTION_Y +                              
+      138 -    connectionIndex * SYSTEM_LAYOUT.CONNECTION_Y_STEP;        
+      168 +  const sx = from.position.x;                                 
+      169 +  const sz = from.position.z;                                 
+      170 +  const ex = to.position.x;                                   
+      171 +  const ez = to.position.z;                                   
+      172  
+      140 -  const start = from.position;                                
+      141 -  const end = to.position;                                    
+      173 +  const dx = ex - sx;                                         
+      174 +  const dz = ez - sz;                                         
+      175  
+      143 -  // Route: go up from start → travel X → travel Z → go down t
+          -o end                                                         
+      144 -  return [                                                    
+      145 -    new THREE.Vector3(start.x, nodeTop, start.z),             
+      146 -    new THREE.Vector3(start.x, y, start.z),                   
+      147 -    new THREE.Vector3(end.x, y, start.z), // move along X     
+      148 -    new THREE.Vector3(end.x, y, end.z), // move along Z       
+      149 -    new THREE.Vector3(end.x, nodeTop, end.z),                 
+      150 -  ];                                                          
+      176 +  // Choose routing order to minimize crossings:              
+      177 +  // If nodes are more separated along X, route X-first then Z
+      178 +  // Otherwise route Z-first then X                           
+      179 +  const xFirst = Math.abs(dx) >= Math.abs(dz);                
+      180 +                                                              
+      181 +  // Get a small lateral offset for this corridor to separate 
+          +parallel lines                                                
+      182 +  const key = xFirst                                          
+      183 +    ? corridorKey(sx, sz, ex, sz) + '|' + corridorKey(ex, sz, 
+          +ex, ez)                                                       
+      184 +    : corridorKey(sx, sz, sx, ez) + '|' + corridorKey(sx, ez, 
+          +ex, ez);                                                      
+      185 +  const offset = nextCorridorOffset(key, corridorCounts);     
+      186 +                                                              
+      187 +  if (xFirst) {                                               
+      188 +    // Exit from X-facing edge of source, arrive at X-facing e
+          +dge of target                                                 
+      189 +    const exitX = dx > 0 ? sx + from.halfWidth : sx - from.hal
+          +fWidth;                                                       
+      190 +    const enterX = dx > 0 ? ex - to.halfWidth : ex + to.halfWi
+          +dth;                                                          
+      191 +    // Offset the Z-travel segment slightly to separate parall
+          +el connections                                                
+      192 +    const midZ = sz + offset;                                 
+      193 +    return [                                                  
+      194 +      new THREE.Vector3(exitX, 0, sz),                        
+      195 +      new THREE.Vector3(enterX, 0, midZ === sz ? sz : midZ), /
+          +/ travel X (with small Z offset)                              
+      196 +      ...(Math.abs(dz) > 0.01 || Math.abs(offset) > 0.01      
+      197 +        ? [new THREE.Vector3(enterX, 0, ez)]                  
+      198 +        : []),                                                
+      199 +      new THREE.Vector3(enterX, 0, ez),                       
+      200 +    ];                                                        
+      201 +  } else {                                                    
+      202 +    // Exit from Z-facing edge                                
+      203 +    const exitZ = dz > 0 ? sz + from.halfDepth : sz - from.hal
+          +fDepth;                                                       
+      204 +    const enterZ = dz > 0 ? ez - to.halfDepth : ez + to.halfDe
+          +pth;                                                          
+      205 +    const midX = sx + offset;                                 
+      206 +    return [                                                  
+      207 +      new THREE.Vector3(sx, 0, exitZ),                        
+      208 +      new THREE.Vector3(midX === sx ? sx : midX, 0, enterZ),  
+      209 +      ...(Math.abs(dx) > 0.01 || Math.abs(offset) > 0.01      
+      210 +        ? [new THREE.Vector3(ex, 0, enterZ)]                  
+      211 +        : []),                                                
+      212 +      new THREE.Vector3(ex, 0, enterZ),                       
+      213 +    ];                                                        
+      214 +  }                                                           
+      215  }
+      216  
+      153 -// ── Self-connection (small loop on one side) ──             
+      154 -function computeSelfConnectionRoute(                          
+      217 +// ── Self-connection: small rectangular bump on one side ──  
+      218 +function computeSelfRoute(                                    
+      219    node: SystemNodeLayout,
+      156 -  connectionIndex: number                                     
+      220 +  corridorCounts: Map<string, number>                         
+      221  ): THREE.Vector3[] {
+      158 -  const nodeTop = SYSTEM_LAYOUT.NODE_HEIGHT / 2;              
+      159 -  const offset = SYSTEM_LAYOUT.NODE_SIZE * 0.8;               
+      160 -  const y =                                                   
+      161 -    SYSTEM_LAYOUT.CONNECTION_Y +                              
+      162 -    connectionIndex * SYSTEM_LAYOUT.CONNECTION_Y_STEP;        
+      163 -                                                              
+      222    const cx = node.position.x;
+      223    const cz = node.position.z;
+      224 +  const bump = node.halfWidth * 1.5;                          
+      225  
+      226 +  const key = `self-${node.participant.alias}`;               
+      227 +  const offset = nextCorridorOffset(key, corridorCounts);     
+      228 +                                                              
+      229 +  const exitX = cx + node.halfWidth;                          
+      230 +  const loopX = cx + node.halfWidth + bump;                   
+      231 +  const loopZ = cz + node.halfDepth + bump * 0.6 + offset;    
+      232 +                                                              
+      233    return [
+      168 -    new THREE.Vector3(cx + SYSTEM_LAYOUT.NODE_SIZE / 2, nodeTo
+          -p, cz),                                                       
+      169 -    new THREE.Vector3(cx + SYSTEM_LAYOUT.NODE_SIZE / 2, y, cz)
+          -,                                                             
+      170 -    new THREE.Vector3(cx + SYSTEM_LAYOUT.NODE_SIZE / 2 + offse
+          -t, y, cz),                                                    
+      171 -    new THREE.Vector3(                                        
+      172 -      cx + SYSTEM_LAYOUT.NODE_SIZE / 2 + offset,              
+      173 -      y,                                                      
+      174 -      cz + offset                                             
+      175 -    ),                                                        
+      176 -    new THREE.Vector3(cx, y, cz + offset),                    
+      177 -    new THREE.Vector3(cx, nodeTop, cz + offset),              
+      234 +    new THREE.Vector3(exitX, 0, cz - 0.2),         // exit fro
+          +m right side (slightly above center)                          
+      235 +    new THREE.Vector3(loopX, 0, cz - 0.2),         // go right
+      236 +    new THREE.Vector3(loopX, 0, loopZ),             // go down
+      237 +    new THREE.Vector3(cx, 0, loopZ),                // go left
+      238 +    new THREE.Vector3(cx, 0, cz + node.halfDepth),  // enter f
+          +rom bottom                                                    
+      239    ];
+      240  }
+
+● Now update the node mesh to use the per-node scale dimensions.
+
+● Write(src/scene/node-mesh.ts)
+  ⎿  Added 7 lines, removed 7 lines
+      1  import * as THREE from 'three';
+      2 -import { SystemNodeLayout, SYSTEM_LAYOUT } from '../types';     
+      2 +import { SystemNodeLayout } from '../types';                    
+      3  import { createLabel } from './label-factory';
+      4  
+      5  const COLORS = [0x4a9eff, 0xff6b6b, 0x51cf66, 0xffd43b, 0xcc5de8
+         , 0x20c997];
+     ...
+       8    const group = new THREE.Group();
+       9    const color = COLORS[node.index % COLORS.length];
+      10  
+      11 -  const geometry = new THREE.BoxGeometry(                      
+      12 -    SYSTEM_LAYOUT.NODE_SIZE,                                   
+      13 -    SYSTEM_LAYOUT.NODE_HEIGHT,                                 
+      14 -    SYSTEM_LAYOUT.NODE_DEPTH                                   
+      15 -  );                                                           
+      11 +  const w = node.halfWidth * 2;                                
+      12 +  const h = node.halfHeight * 2;                               
+      13 +  const d = node.halfDepth * 2;                                
+      14 +                                                               
+      15 +  const geometry = new THREE.BoxGeometry(w, h, d);             
+      16    const material = new THREE.MeshStandardMaterial({
+      17      color,
+      18      roughness: 0.35,
+     ...
+      36  
+      37    const labelPos = node.position
+      38      .clone()
+      39 -    .add(new THREE.Vector3(0, SYSTEM_LAYOUT.NODE_HEIGHT / 2 + 0
+         -.5, 0));                                                       
+      39 +    .add(new THREE.Vector3(0, node.halfHeight + 0.5, 0));      
+      40    const label = createLabel(
+      41      node.participant.name,
+      42      labelPos,
+
+● Now let me verify it all compiles.
+● Bash(npx tsc --noEmit 2>&1)
+  ⎿  (No output)
+
+● Bash(npm run build 2>&1)
+  ⎿  > sequence3d@1.0.0 build
+     > tsc && vite build
+     … +16 lines (ctrl+o to expand)
+  ⎿  (timeout 30s)
+
+● Clean build. Here's what changed:
+
+  Types — SystemNodeLayout now carries per-node dimensions (halfWidth,
+  halfDepth, halfHeight, scale) computed from connectivity. SYSTEM_LAYOUT
+  constants replaced the fixed sizes with NODE_MIN_SIZE/NODE_MAX_SIZE and
+  NODE_MIN_HEIGHT/NODE_MAX_HEIGHT ranges, plus a CONNECTION_OFFSET_STEP for
+  separating parallel connections.
+
+  Layout engine — Connections now route entirely at y = 0 (node center level,
+  within every node's Y range), exiting from the edge of each node rather than
+  going above them:
+  - Each node's width/depth/height scales linearly with its normalized degree
+  (more connections = bigger box)
+  - Connections exit from the side of the source node facing the target and
+  enter the facing side of the target
+  - Routing picks X-first or Z-first based on which axis has more separation
+  (reduces unnecessary bends)
+  - A corridor-offset system shifts parallel connections by small increments to
+  reduce overlap without diagonals
+
+  Node mesh — Now reads halfWidth/halfHeight/halfDepth from the layout instead
+  of using fixed constants, so each node renders at its connectivity-scaled
+  size.
+
+✻ Baked for 2m 7s
+
+❯ this is better but all arrows need not go to the center of the block. Imagine 
+ a system diagram in 2d but converted to 3d. Where the lines are orthogonal.    
+Look up some 2d system diagram images online if you need to.                    
+
+● Agent(Research 2D system diagrams)
+  ⎿  Done (0 tool uses · 9.1k tokens · 15s)
+  (ctrl+o to expand)
+
+● Good — the key patterns are clear. Let me re-read the current layout engine
+  and rework the routing to use per-side port distribution (connections spread
+  along node edges) instead of all converging to center.
+
+  Read 1 file (ctrl+o to expand)
+
+● Now I'll rewrite the layout engine with proper port-based routing —
+  connections attach at distributed points along node edges, not all at center.
+
+● Write(src/layout/system-layout-engine.ts)
+  ⎿  Added 250 lines, removed 137 lines
+       7    SYSTEM_LAYOUT,
+       8  } from '../types';
+       9  
+      10 -/**                                                            
+      11 - * Computes a system-diagram layout:                           
+      12 - * - Nodes on XZ plane, sized by connectivity, high-connectivit
+         -y toward center                                                
+      13 - * - Orthogonal connection routing at y = 0 (within node Y rang
+         -e), exiting from node edges                                    
+      14 - */                                                            
+      10 +type Side = '+x' | '-x' | '+z' | '-z';                         
+      11 +                                                               
+      12 +interface PortAssignment {                                     
+      13 +  node: SystemNodeLayout;                                      
+      14 +  side: Side;                                                  
+      15 +  /** Position along the edge (set during distribution) */     
+      16 +  port: THREE.Vector3;                                         
+      17 +}                                                              
+      18 +                                                               
+      19 +interface PendingConnection {                                  
+      20 +  msg: ParsedDiagram['messages'][number];                      
+      21 +  from: PortAssignment;                                        
+      22 +  to: PortAssignment;                                          
+      23 +  isSelf: boolean;                                             
+      24 +}                                                              
+      25 +                                                               
+      26  export function computeSystemLayout(diagram: ParsedDiagram): Sy
+          stemLayout {
+      27    const { participants, messages } = diagram;
+      28  
+      18 -  // ── 1. Compute connectivity per participant ──             
+      29 +  // ── 1. Connectivity ──                                     
+      30    const degree = new Map<string, number>();
+      31    participants.forEach((p) => degree.set(p.alias, 0));
+      32    messages.forEach((m) => {
+      33      degree.set(m.from, (degree.get(m.from) ?? 0) + 1);
+      34      degree.set(m.to, (degree.get(m.to) ?? 0) + 1);
+      35    });
+      25 -                                                               
+      36    const maxDegree = Math.max(1, ...degree.values());
+      37  
+      28 -  // Sort by degree descending — most connected = center of spi
+         -ral                                                            
+      38 +  // Sort most-connected first → center of spiral              
+      39    const sorted = [...participants].sort(
+      40      (a, b) => (degree.get(b.alias) ?? 0) - (degree.get(a.alias)
+           ?? 0)
+      41    );
+      42  
+      33 -  // ── 2. Place nodes in a spiral pattern on XZ plane ──      
+      34 -  const positions = computeSpiralPositions(sorted.length);     
+      43 +  // ── 2. Place nodes on XZ plane ──                          
+      44 +  const gridPositions = computeSpiralPositions(sorted.length); 
+      45    const nodeMap = new Map<string, SystemNodeLayout>();
+      46    const nodes: SystemNodeLayout[] = sorted.map((p, i) => {
+      47      const d = degree.get(p.alias) ?? 0;
+      38 -    const t = maxDegree > 1 ? d / maxDegree : 0.5; // normalize
+         -d 0–1                                                          
+      39 -                                                               
+      48 +    const t = maxDegree > 1 ? d / maxDegree : 0.5;             
+      49      const lerp = (lo: number, hi: number) => lo + (hi - lo) * t
+          ;
+      50      const w = lerp(SYSTEM_LAYOUT.NODE_MIN_SIZE, SYSTEM_LAYOUT.N
+          ODE_MAX_SIZE);
+      51      const h = lerp(SYSTEM_LAYOUT.NODE_MIN_HEIGHT, SYSTEM_LAYOUT
+          .NODE_MAX_HEIGHT);
+     ...
+      53      const node: SystemNodeLayout = {
+      54        participant: p,
+      55        position: new THREE.Vector3(
+      47 -        positions[i].x * SYSTEM_LAYOUT.GRID_SPACING,           
+      56 +        gridPositions[i].x * SYSTEM_LAYOUT.GRID_SPACING,       
+      57          0,
+      49 -        positions[i].z * SYSTEM_LAYOUT.GRID_SPACING            
+      58 +        gridPositions[i].z * SYSTEM_LAYOUT.GRID_SPACING        
+      59        ),
+      60        index: i,
+      61        scale: t,
+     ...
+       67      return node;
+       68    });
+       69  
+       61 -  // ── 3. Route orthogonal connections at y = 0 ──           
+       62 -  // Track how many connections share a corridor so we can off
+          -set them                                                      
+       63 -  const corridorCounts = new Map<string, number>();           
+       70 +  // ── 3. Assign each connection endpoint to a side of its no
+          +de ──                                                         
+       71 +  // Collect all port assignments per (node alias, side) so we
+          + can distribute them                                          
+       72 +  const sidePorts = new Map<string, PortAssignment[]>(); // ke
+          +y = "alias|side"                                              
+       73  
+       65 -  const connections: SystemConnectionLayout[] = [];           
+       74 +  function sideKey(alias: string, side: Side): string {       
+       75 +    return `${alias}|${side}`;                                
+       76 +  }                                                           
+       77  
+       78 +  function pickSide(from: SystemNodeLayout, to: SystemNodeLayo
+          +ut): Side {                                                   
+       79 +    const dx = to.position.x - from.position.x;               
+       80 +    const dz = to.position.z - from.position.z;               
+       81 +    if (Math.abs(dx) >= Math.abs(dz)) {                       
+       82 +      return dx >= 0 ? '+x' : '-x';                           
+       83 +    }                                                         
+       84 +    return dz >= 0 ? '+z' : '-z';                             
+       85 +  }                                                           
+       86 +                                                              
+       87 +  const pending: PendingConnection[] = [];                    
+       88 +                                                              
+       89    messages.forEach((msg) => {
+       90      const fromNode = nodeMap.get(msg.from);
+       91      const toNode = nodeMap.get(msg.to);
+       92      if (!fromNode || !toNode) return;
+       93  
+       94      const isSelf = msg.from === msg.to;
+       73 -    const waypoints = isSelf                                  
+       74 -      ? computeSelfRoute(fromNode, corridorCounts)            
+       75 -      : computeOrthogonalRoute(fromNode, toNode, corridorCount
+          -s);                                                           
+       95  
+       77 -    connections.push({                                        
+       78 -      message: msg,                                           
+       96 +    let fromSide: Side;                                       
+       97 +    let toSide: Side;                                         
+       98 +                                                              
+       99 +    if (isSelf) {                                             
+      100 +      fromSide = '+x';                                        
+      101 +      toSide = '+z';                                          
+      102 +    } else {                                                  
+      103 +      fromSide = pickSide(fromNode, toNode);                  
+      104 +      toSide = oppositeSide(fromSide);                        
+      105 +    }                                                         
+      106 +                                                              
+      107 +    const fromPort: PortAssignment = {                        
+      108 +      node: fromNode,                                         
+      109 +      side: fromSide,                                         
+      110 +      port: new THREE.Vector3(), // filled later              
+      111 +    };                                                        
+      112 +    const toPort: PortAssignment = {                          
+      113 +      node: toNode,                                           
+      114 +      side: toSide,                                           
+      115 +      port: new THREE.Vector3(), // filled later              
+      116 +    };                                                        
+      117 +                                                              
+      118 +    // Register for distribution                              
+      119 +    const fk = sideKey(msg.from, fromSide);                   
+      120 +    if (!sidePorts.has(fk)) sidePorts.set(fk, []);            
+      121 +    sidePorts.get(fk)!.push(fromPort);                        
+      122 +                                                              
+      123 +    const tk = sideKey(msg.to, toSide);                       
+      124 +    if (!sidePorts.has(tk)) sidePorts.set(tk, []);            
+      125 +    sidePorts.get(tk)!.push(toPort);                          
+      126 +                                                              
+      127 +    pending.push({ msg, from: fromPort, to: toPort, isSelf });
+      128 +  });                                                         
+      129 +                                                              
+      130 +  // ── 4. Distribute ports evenly along each node edge ──    
+      131 +  sidePorts.forEach((ports, key) => {                         
+      132 +    const [alias] = key.split('|');                           
+      133 +    const side = key.split('|')[1] as Side;                   
+      134 +    const node = nodeMap.get(alias)!;                         
+      135 +    distributePortsAlongEdge(node, side, ports);              
+      136 +  });                                                         
+      137 +                                                              
+      138 +  // ── 5. Route orthogonal waypoints from port to port ──    
+      139 +  const connections: SystemConnectionLayout[] = pending.map((p
+          +c) => {                                                       
+      140 +    const waypoints = pc.isSelf                               
+      141 +      ? routeSelfConnection(pc.from, pc.to)                   
+      142 +      : routeConnection(pc.from, pc.to);                      
+      143 +                                                              
+      144 +    return {                                                  
+      145 +      message: pc.msg,                                        
+      146        waypoints,
+       80 -      fromNode,                                               
+       81 -      toNode,                                                 
+       82 -      isSelfConnection: isSelf,                               
+       83 -    });                                                       
+      147 +      fromNode: pc.from.node,                                 
+      148 +      toNode: pc.to.node,                                     
+      149 +      isSelfConnection: pc.isSelf,                            
+      150 +    };                                                        
+      151    });
+      152  
+       86 -  // ── 4. Compute bounds ──                                  
+      153 +  // ── 6. Bounds ──                                          
+      154    const allX = nodes.map((n) => n.position.x);
+      155    const allZ = nodes.map((n) => n.position.z);
+      156    const pad = SYSTEM_LAYOUT.GRID_SPACING;
+     ...
+      160    const maxZ = Math.max(...allZ) + pad;
+      161    const maxH = Math.max(...nodes.map((n) => n.halfHeight));
+      162  
+       96 -  const bounds = {                                            
+       97 -    min: new THREE.Vector3(minX, -maxH, minZ),                
+       98 -    max: new THREE.Vector3(maxX, maxH, maxZ),                 
+       99 -    center: new THREE.Vector3((minX + maxX) / 2, 0, (minZ + ma
+          -xZ) / 2),                                                     
+      163 +  return {                                                    
+      164 +    nodes,                                                    
+      165 +    connections,                                              
+      166 +    bounds: {                                                 
+      167 +      min: new THREE.Vector3(minX, -maxH, minZ),              
+      168 +      max: new THREE.Vector3(maxX, maxH, maxZ),               
+      169 +      center: new THREE.Vector3((minX + maxX) / 2, 0, (minZ + 
+          +maxZ) / 2),                                                   
+      170 +    },                                                        
+      171    };
+      172 +}                                                             
+      173  
+      102 -  return { nodes, connections, bounds };                      
+      174 +// ── Helpers ──                                              
+      175 +                                                              
+      176 +function oppositeSide(s: Side): Side {                        
+      177 +  switch (s) {                                                
+      178 +    case '+x': return '-x';                                   
+      179 +    case '-x': return '+x';                                   
+      180 +    case '+z': return '-z';                                   
+      181 +    case '-z': return '+z';                                   
+      182 +  }                                                           
+      183  }
+      184  
+      185 +/**                                                           
+      186 + * Given N ports on one side of a node, spread them evenly alo
+          +ng that edge.                                                 
+      187 + * +x / -x sides run along Z (from -halfDepth to +halfDepth)  
+      188 + * +z / -z sides run along X (from -halfWidth to +halfWidth)  
+      189 + */                                                           
+      190 +function distributePortsAlongEdge(                            
+      191 +  node: SystemNodeLayout,                                     
+      192 +  side: Side,                                                 
+      193 +  ports: PortAssignment[]                                     
+      194 +): void {                                                     
+      195 +  const n = ports.length;                                     
+      196 +  const cx = node.position.x;                                 
+      197 +  const cz = node.position.z;                                 
+      198 +                                                              
+      199 +  if (side === '+x' || side === '-x') {                       
+      200 +    const edgeX = side === '+x' ? cx + node.halfWidth : cx - n
+          +ode.halfWidth;                                                
+      201 +    const span = node.halfDepth * 2;                          
+      202 +    for (let i = 0; i < n; i++) {                             
+      203 +      // evenly distribute along Z, centered                  
+      204 +      const t = n === 1 ? 0.5 : i / (n - 1);                  
+      205 +      const z = cz - node.halfDepth + span * t;               
+      206 +      ports[i].port.set(edgeX, 0, z);                         
+      207 +    }                                                         
+      208 +  } else {                                                    
+      209 +    const edgeZ = side === '+z' ? cz + node.halfDepth : cz - n
+          +ode.halfDepth;                                                
+      210 +    const span = node.halfWidth * 2;                          
+      211 +    for (let i = 0; i < n; i++) {                             
+      212 +      const t = n === 1 ? 0.5 : i / (n - 1);                  
+      213 +      const x = cx - node.halfWidth + span * t;               
+      214 +      ports[i].port.set(x, 0, edgeZ);                         
+      215 +    }                                                         
+      216 +  }                                                           
+      217 +}                                                             
+      218 +                                                              
+      219 +/**                                                           
+      220 + * Route between two ports with an L-shaped or Z-shaped orthog
+          +onal path.                                                    
+      221 + * The line exits perpendicular to the edge, then turns to rea
+          +ch the target port.                                           
+      222 + */                                                           
+      223 +function routeConnection(                                     
+      224 +  from: PortAssignment,                                       
+      225 +  to: PortAssignment                                          
+      226 +): THREE.Vector3[] {                                          
+      227 +  const fp = from.port;                                       
+      228 +  const tp = to.port;                                         
+      229 +                                                              
+      230 +  // Determine the perpendicular "exit stub" direction for eac
+          +h side                                                        
+      231 +  const stubLen = 0.8; // how far to extend before turning    
+      232 +                                                              
+      233 +  const fromStub = stubPoint(fp, from.side, stubLen);         
+      234 +  const toStub = stubPoint(tp, to.side, stubLen);             
+      235 +                                                              
+      236 +  // Now connect fromStub → toStub with axis-aligned segments.
+      237 +  // We need at most one bend between the two stubs.          
+      238 +  const waypoints = [fp.clone(), fromStub.clone()];           
+      239 +                                                              
+      240 +  const dx = toStub.x - fromStub.x;                           
+      241 +  const dz = toStub.z - fromStub.z;                           
+      242 +                                                              
+      243 +  if (exitsAlongX(from.side)) {                               
+      244 +    // From stub extends along X. Route: continue X to align w
+          +ith toStub Z, then Z.                                         
+      245 +    if (exitsAlongX(to.side)) {                               
+      246 +      // Both along X — need a Z jog in between               
+      247 +      const midX = (fromStub.x + toStub.x) / 2;               
+      248 +      waypoints.push(new THREE.Vector3(midX, 0, fromStub.z)); 
+      249 +      waypoints.push(new THREE.Vector3(midX, 0, toStub.z));   
+      250 +    } else {                                                  
+      251 +      // from along X, to along Z — L-shape via corner        
+      252 +      waypoints.push(new THREE.Vector3(toStub.x, 0, fromStub.z
+          +));                                                           
+      253 +    }                                                         
+      254 +  } else {                                                    
+      255 +    // From stub extends along Z                              
+      256 +    if (exitsAlongZ(to.side)) {                               
+      257 +      // Both along Z — need an X jog                         
+      258 +      const midZ = (fromStub.z + toStub.z) / 2;               
+      259 +      waypoints.push(new THREE.Vector3(fromStub.x, 0, midZ)); 
+      260 +      waypoints.push(new THREE.Vector3(toStub.x, 0, midZ));   
+      261 +    } else {                                                  
+      262 +      // from along Z, to along X — L-shape via corner        
+      263 +      waypoints.push(new THREE.Vector3(fromStub.x, 0, toStub.z
+          +));                                                           
+      264 +    }                                                         
+      265 +  }                                                           
+      266 +                                                              
+      267 +  waypoints.push(toStub.clone());                             
+      268 +  waypoints.push(tp.clone());                                 
+      269 +                                                              
+      270 +  return deduplicateWaypoints(waypoints);                     
+      271 +}                                                             
+      272 +                                                              
+      273 +function routeSelfConnection(                                 
+      274 +  from: PortAssignment,                                       
+      275 +  to: PortAssignment                                          
+      276 +): THREE.Vector3[] {                                          
+      277 +  const fp = from.port;                                       
+      278 +  const tp = to.port;                                         
+      279 +  const bump = from.node.halfWidth * 1.2;                     
+      280 +                                                              
+      281 +  const fromStub = stubPoint(fp, from.side, bump);            
+      282 +  const toStub = stubPoint(tp, to.side, bump);                
+      283 +                                                              
+      284 +  // Route: exit → out → corner → corner → in → enter         
+      285 +  return deduplicateWaypoints([                               
+      286 +    fp.clone(),                                               
+      287 +    fromStub.clone(),                                         
+      288 +    new THREE.Vector3(fromStub.x, 0, toStub.z),               
+      289 +    toStub.clone(),                                           
+      290 +    tp.clone(),                                               
+      291 +  ]);                                                         
+      292 +}                                                             
+      293 +                                                              
+      294 +function stubPoint(port: THREE.Vector3, side: Side, len: numbe
+          +r): THREE.Vector3 {                                           
+      295 +  switch (side) {                                             
+      296 +    case '+x': return new THREE.Vector3(port.x + len, 0, port.
+          +z);                                                           
+      297 +    case '-x': return new THREE.Vector3(port.x - len, 0, port.
+          +z);                                                           
+      298 +    case '+z': return new THREE.Vector3(port.x, 0, port.z + le
+          +n);                                                           
+      299 +    case '-z': return new THREE.Vector3(port.x, 0, port.z - le
+          +n);                                                           
+      300 +  }                                                           
+      301 +}                                                             
+      302 +                                                              
+      303 +function exitsAlongX(side: Side): boolean {                   
+      304 +  return side === '+x' || side === '-x';                      
+      305 +}                                                             
+      306 +                                                              
+      307 +function exitsAlongZ(side: Side): boolean {                   
+      308 +  return side === '+z' || side === '-z';                      
+      309 +}                                                             
+      310 +                                                              
+      311 +/** Remove consecutive duplicate points */                    
+      312 +function deduplicateWaypoints(pts: THREE.Vector3[]): THREE.Vec
+          +tor3[] {                                                      
+      313 +  const result: THREE.Vector3[] = [pts[0]];                   
+      314 +  for (let i = 1; i < pts.length; i++) {                      
+      315 +    if (pts[i].distanceTo(pts[i - 1]) > 0.001) {              
+      316 +      result.push(pts[i]);                                    
+      317 +    }                                                         
+      318 +  }                                                           
+      319 +  return result;                                              
+      320 +}                                                             
+      321 +                                                              
+      322  // ── Spiral placement ──
+      323  function computeSpiralPositions(
+      324    count: number
+     ...
+      351  
+      352    return result;
+      353  }
+      137 -                                                              
+      138 -/**                                                           
+      139 - * Produce a corridor key for a pair of grid-aligned segments 
+          -so we can                                                     
+      140 - * count how many connections share the same corridor and offs
+          -et them.                                                      
+      141 - */                                                           
+      142 -function corridorKey(ax: number, az: number, bx: number, bz: n
+          -umber): string {                                              
+      143 -  const minX = Math.min(ax, bx);                              
+      144 -  const maxX = Math.max(ax, bx);                              
+      145 -  const minZ = Math.min(az, bz);                              
+      146 -  const maxZ = Math.max(az, bz);                              
+      147 -  return `${minX},${minZ}-${maxX},${maxZ}`;                   
+      148 -}                                                             
+      149 -                                                              
+      150 -function nextCorridorOffset(                                  
+      151 -  key: string,                                                
+      152 -  corridorCounts: Map<string, number>                         
+      153 -): number {                                                   
+      154 -  const count = corridorCounts.get(key) ?? 0;                 
+      155 -  corridorCounts.set(key, count + 1);                         
+      156 -  // Center the offsets: 0, +step, -step, +2step, -2step …    
+      157 -  const sign = count % 2 === 0 ? 1 : -1;                      
+      158 -  const mag = Math.ceil(count / 2);                           
+      159 -  return sign * mag * SYSTEM_LAYOUT.CONNECTION_OFFSET_STEP;   
+      160 -}                                                             
+      161 -                                                              
+      162 -// ── Orthogonal routing on the XZ plane (y = 0) ──           
+      163 -function computeOrthogonalRoute(                              
+      164 -  from: SystemNodeLayout,                                     
+      165 -  to: SystemNodeLayout,                                       
+      166 -  corridorCounts: Map<string, number>                         
+      167 -): THREE.Vector3[] {                                          
+      168 -  const sx = from.position.x;                                 
+      169 -  const sz = from.position.z;                                 
+      170 -  const ex = to.position.x;                                   
+      171 -  const ez = to.position.z;                                   
+      172 -                                                              
+      173 -  const dx = ex - sx;                                         
+      174 -  const dz = ez - sz;                                         
+      175 -                                                              
+      176 -  // Choose routing order to minimize crossings:              
+      177 -  // If nodes are more separated along X, route X-first then Z
+      178 -  // Otherwise route Z-first then X                           
+      179 -  const xFirst = Math.abs(dx) >= Math.abs(dz);                
+      180 -                                                              
+      181 -  // Get a small lateral offset for this corridor to separate 
+          -parallel lines                                                
+      182 -  const key = xFirst                                          
+      183 -    ? corridorKey(sx, sz, ex, sz) + '|' + corridorKey(ex, sz, 
+          -ex, ez)                                                       
+      184 -    : corridorKey(sx, sz, sx, ez) + '|' + corridorKey(sx, ez, 
+          -ex, ez);                                                      
+      185 -  const offset = nextCorridorOffset(key, corridorCounts);     
+      186 -                                                              
+      187 -  if (xFirst) {                                               
+      188 -    // Exit from X-facing edge of source, arrive at X-facing e
+          -dge of target                                                 
+      189 -    const exitX = dx > 0 ? sx + from.halfWidth : sx - from.hal
+          -fWidth;                                                       
+      190 -    const enterX = dx > 0 ? ex - to.halfWidth : ex + to.halfWi
+          -dth;                                                          
+      191 -    // Offset the Z-travel segment slightly to separate parall
+          -el connections                                                
+      192 -    const midZ = sz + offset;                                 
+      193 -    return [                                                  
+      194 -      new THREE.Vector3(exitX, 0, sz),                        
+      195 -      new THREE.Vector3(enterX, 0, midZ === sz ? sz : midZ), /
+          -/ travel X (with small Z offset)                              
+      196 -      ...(Math.abs(dz) > 0.01 || Math.abs(offset) > 0.01      
+      197 -        ? [new THREE.Vector3(enterX, 0, ez)]                  
+      198 -        : []),                                                
+      199 -      new THREE.Vector3(enterX, 0, ez),                       
+      200 -    ];                                                        
+      201 -  } else {                                                    
+      202 -    // Exit from Z-facing edge                                
+      203 -    const exitZ = dz > 0 ? sz + from.halfDepth : sz - from.hal
+          -fDepth;                                                       
+      204 -    const enterZ = dz > 0 ? ez - to.halfDepth : ez + to.halfDe
+          -pth;                                                          
+      205 -    const midX = sx + offset;                                 
+      206 -    return [                                                  
+      207 -      new THREE.Vector3(sx, 0, exitZ),                        
+      208 -      new THREE.Vector3(midX === sx ? sx : midX, 0, enterZ),  
+      209 -      ...(Math.abs(dx) > 0.01 || Math.abs(offset) > 0.01      
+      210 -        ? [new THREE.Vector3(ex, 0, enterZ)]                  
+      211 -        : []),                                                
+      212 -      new THREE.Vector3(ex, 0, enterZ),                       
+      213 -    ];                                                        
+      214 -  }                                                           
+      215 -}                                                             
+      216 -                                                              
+      217 -// ── Self-connection: small rectangular bump on one side ──  
+      218 -function computeSelfRoute(                                    
+      219 -  node: SystemNodeLayout,                                     
+      220 -  corridorCounts: Map<string, number>                         
+      221 -): THREE.Vector3[] {                                          
+      222 -  const cx = node.position.x;                                 
+      223 -  const cz = node.position.z;                                 
+      224 -  const bump = node.halfWidth * 1.5;                          
+      225 -                                                              
+      226 -  const key = `self-${node.participant.alias}`;               
+      227 -  const offset = nextCorridorOffset(key, corridorCounts);     
+      228 -                                                              
+      229 -  const exitX = cx + node.halfWidth;                          
+      230 -  const loopX = cx + node.halfWidth + bump;                   
+      231 -  const loopZ = cz + node.halfDepth + bump * 0.6 + offset;    
+      232 -                                                              
+      233 -  return [                                                    
+      234 -    new THREE.Vector3(exitX, 0, cz - 0.2),         // exit fro
+          -m right side (slightly above center)                          
+      235 -    new THREE.Vector3(loopX, 0, cz - 0.2),         // go right
+      236 -    new THREE.Vector3(loopX, 0, loopZ),             // go down
+      237 -    new THREE.Vector3(cx, 0, loopZ),                // go left
+      238 -    new THREE.Vector3(cx, 0, cz + node.halfDepth),  // enter f
+          -rom bottom                                                    
+      239 -  ];                                                          
+      240 -}                                                             
+
+● Bash(npx tsc --noEmit 2>&1)
+  ⎿  (No output)
+
+● Bash(npm run build 2>&1)
+  ⎿  > sequence3d@1.0.0 build
+     > tsc && vite build
+     … +16 lines (ctrl+o to expand)
+  ⎿  (timeout 30s)
+
+● Clean build. Here's what changed:
+
+  Port-based routing — The layout engine now works in two passes, like a real
+  diagram tool:
+
+  1. Side assignment: Each connection endpoint picks which side of its node to
+  attach to (+x, -x, +z, -z) based on the direction to the other node.
+  2. Port distribution: All connections sharing the same side of a node get
+  their attachment points spread evenly along that edge (e.g., 3 connections on
+  a node's right side get placed at 1/4, 1/2, 3/4 of the edge length). No two
+  connections share a port.
+  3. Stub + orthogonal routing: Each connection exits its port perpendicular to
+  the node edge (a short stub outward), then turns with axis-aligned segments
+  (L-shape or Z-shape) to reach the target port's stub. Lines are never
+  diagonal.
+  4. Routing logic adapts to which sides both endpoints use:
+    - Opposite sides (e.g., +x → -x): simple L-shape through a corner
+    - Same-axis sides (e.g., both +x): Z-shape with a midpoint jog
+    - Cross-axis (e.g., +x → +z): L-shape via the corner point
+
+  This matches the standard 2D system/block diagram convention where lines fan
+  out from edges rather than all converging on the center of each block.
+
+✻ Worked for 1m 52s
+
+❯ I want any self connections (to particopants) should disolve away after they  
+have be drawn.                                                                  
+
+  Read 2 files (ctrl+o to expand)
+
+● I need to add a dissolve method to ConnectionObject and trigger it in the
+  timeline after self-connections finish drawing. I'll make the line, cone, and
+  label fade out.
+
+● Update(src/types.ts)
+  ⎿  Added 2 lines
+      109  export interface ConnectionObject {
+      110    group: THREE.Group;
+      111    animateGrow: (progress: number) => void;
+      112 +  /** Fade out all visuals (line, arrowhead, label). Call afte
+          +r grow completes. */                                          
+      113 +  dissolve: (opacity: number) => void;                        
+      114    layout: SystemConnectionLayout;
+      115  }
+      116  
+
+● Now update connection-mesh to make materials transparent-capable and add the
+  dissolve closure.
+
+● Update(src/scene/connection-mesh.ts)
+  ⎿  Added 9 lines, removed 1 line
+      35          color: 0x88bbff,
+      36          dashSize: 0.2,
+      37          gapSize: 0.1,
+      38 +        transparent: true,                                     
+      39 +        opacity: 1,                                            
+      40        })
+      39 -    : new THREE.LineBasicMaterial({ color: 0x88bbff });        
+      41 +    : new THREE.LineBasicMaterial({                            
+      42 +        color: 0x88bbff,                                       
+      43 +        transparent: true,                                     
+      44 +        opacity: 1,                                            
+      45 +      });                                                      
+      46    const line = new THREE.Line(geometry, material);
+      47    group.add(line);
+      48  
+     ...
+      52      color: 0x88bbff,
+      53      emissive: 0x88bbff,
+      54      emissiveIntensity: 0.3,
+      55 +    transparent: true,                                         
+      56 +    opacity: 1,                                                
+      57    });
+      58    const cone = new THREE.Mesh(coneGeom, coneMat);
+      59    cone.visible = false;
+
+● Now add the dissolve method and include it in the returned object.
+
+● Update(src/scene/connection-mesh.ts)
+  ⎿  Added 10 lines, removed 1 line
+      135        progress > 0.8 ? String((progress - 0.8) / 0.2) : '0';
+      136    };
+      137  
+      138 -  return { group, animateGrow, layout };                      
+      138 +  const dissolve = (opacity: number): void => {               
+      139 +    material.opacity = opacity;                               
+      140 +    coneMat.opacity = opacity;                                
+      141 +    label.element.style.opacity = String(opacity);            
+      142 +    if (opacity <= 0) {                                       
+      143 +      group.visible = false;                                  
+      144 +    }                                                         
+      145 +  };                                                          
+      146 +                                                              
+      147 +  return { group, animateGrow, dissolve, layout };            
+      148  }
+
+● Now add the dissolve tween to the system timeline for self-connections.
+
+● Update(src/animation/system-timeline-sequencer.ts)
+  ⎿  Added 12 lines
+      34      });
+      35      tl.add(growTween, `${label}-cam+=0.3`);
+      36  
+      37 +    // Self-connections dissolve away after fully drawn        
+      38 +    if (conn.layout.isSelfConnection) {                        
+      39 +      const dissolveProxy = { opacity: 1 };                    
+      40 +      const dissolveTween = gsap.to(dissolveProxy, {           
+      41 +        opacity: 0,                                            
+      42 +        duration: 0.6,                                         
+      43 +        ease: 'power2.in',                                     
+      44 +        onUpdate: () => conn.dissolve(dissolveProxy.opacity),  
+      45 +      });                                                      
+      46 +      tl.add(dissolveTween, '+=0.3');                          
+      47 +    }                                                          
+      48 +                                                               
+      49      tl.add(`${label}-done`, '+=0.35');
+      50    });
+      51  
+
+● Bash(npm run build 2>&1)
+  ⎿  > sequence3d@1.0.0 build
+     > tsc && vite build
+     … +16 lines (ctrl+o to expand)
+  ⎿  (timeout 30s)
+
+● Done. Self-connections now dissolve after being drawn:
+
+  - connection-mesh.ts — Line and cone materials are created with transparent: 
+  true. A dissolve(opacity) closure fades the line, arrowhead, and label
+  together, hiding the group entirely at opacity 0.
+  - system-timeline-sequencer.ts — After a self-connection's grow tween
+  completes, a 0.6s fade-out tween is added to the timeline that animates
+  opacity from 1 → 0.
+  - types.ts — ConnectionObject now includes the dissolve method.
+
+✻ Sautéed for 44s
